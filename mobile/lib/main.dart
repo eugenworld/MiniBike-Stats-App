@@ -165,6 +165,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             const SizedBox(height: 16),
 
+            // ES200G controls (disabled in Demo; BLE firmware must authorize commands)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('ES200G controls', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      OutlinedButton.icon(
+                        onPressed: ble.isConnected && !demoMode ? () => ble.lockScooter() : null,
+                        icon: const Icon(Icons.lock), label: const Text('LOCK')),
+                      OutlinedButton.icon(
+                        onPressed: ble.isConnected && !demoMode ? () => ble.unlockScooter() : null,
+                        icon: const Icon(Icons.lock_open), label: const Text('UNLOCK')),
+                      OutlinedButton.icon(
+                        onPressed: ble.isConnected && !demoMode ? () => ble.toggleScooterLight() : null,
+                        icon: const Icon(Icons.lightbulb_outline), label: const Text('LIGHT')),
+                    ]),
+                    const SizedBox(height: 6),
+                    const Text('Prototype: test on a stand only. Lock state is not a verified anti-theft interlock.',
+                      style: TextStyle(fontSize: 11)),
+                  ],
+                ),
+              ),
+            ),
             // Quick action buttons
             if (ble.isConnected && !demoMode)
               Wrap(
