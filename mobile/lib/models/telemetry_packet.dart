@@ -49,7 +49,7 @@ class TelemetryPacket {
 
   /// Parse from BLE notification (List<int> / Uint8List)
   factory TelemetryPacket.fromBytes(List<int> bytes) {
-    if (bytes.length < 58) {
+    if (bytes.length < 53) {
       throw Exception('Telemetry packet too short: ${bytes.length} bytes');
     }
 
