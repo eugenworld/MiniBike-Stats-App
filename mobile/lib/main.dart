@@ -42,6 +42,33 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   bool demoMode = false;
+  // UI estimates only; no state feedback from YL-ES200G yet.
+  bool? assumedUnlocked;
+  bool? assumedLightOn;
+
+  Future<void> _toggleLock(MiniBikeBle ble) async {
+    try {
+      if (assumedUnlocked == true) {
+        await ble.lockScooter();
+        if (mounted) setState(() => assumedUnlocked = false);
+      } else {
+        await ble.unlockScooter();
+        if (mounted) setState(() => assumedUnlocked = true);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Command failed: $e')));
+    }
+  }
+
+  Future<void> _toggleLight(MiniBikeBle ble) async {
+    try {
+      await ble.toggleScooterLight();
+      if (mounted) setState(() => assumedLightOn = !(assumedLightOn ?? false));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Command failed: $e')));
+    }
+  }
+
 
   static final TelemetryPacket demoTelemetry = TelemetryPacket(
     version: 1,
@@ -111,6 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           : () async {
                               if (ble.isConnected) {
                                 await ble.disconnect();
+                                if (mounted) setState(() { assumedUnlocked = null; assumedLightOn = null; });
                               } else {
                                 try {
                                   await ble.connect();
@@ -176,17 +204,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       OutlinedButton.icon(
-                        onPressed: ble.isConnected && !demoMode ? () => ble.lockScooter() : null,
-                        icon: const Icon(Icons.lock), label: const Text('LOCK')),
+                        onPressed: ble.isConnected && !demoMode ? () => _toggleLock(ble) : null,
+                        icon: Icon(assumedUnlocked == true ? Icons.lock : Icons.lock_open),
+                        label: Text(assumedUnlocked == true ? 'LOCK' : 'UNLOCK'),
+                      ),
                       OutlinedButton.icon(
-                        onPressed: ble.isConnected && !demoMode ? () => ble.unlockScooter() : null,
-                        icon: const Icon(Icons.lock_open), label: const Text('UNLOCK')),
-                      OutlinedButton.icon(
-                        onPressed: ble.isConnected && !demoMode ? () => ble.toggleScooterLight() : null,
-                        icon: const Icon(Icons.lightbulb_outline), label: const Text('LIGHT')),
+                        onPressed: ble.isConnected && !demoMode ? () => _toggleLight(ble) : null,
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: assumedLightOn == true ? Theme.of(context).colorScheme.primaryContainer : null,
+                          foregroundColor: assumedLightOn == true ? Theme.of(context).colorScheme.onPrimaryContainer : null,
+                        ),
+                        icon: Icon(assumedLightOn == true ? Icons.lightbulb : Icons.lightbulb_outline),
+                        label: const Text('LIGHT'),
+                      ),
                     ]),
                     const SizedBox(height: 6),
-                    const Text('Prototype: test on a stand only. Lock state is not a verified anti-theft interlock.',
+                    const Text('Bench prototype. Button states are estimates, not controller-confirmed. Unknown after reconnect.',
                       style: TextStyle(fontSize: 11)),
                   ],
                 ),
