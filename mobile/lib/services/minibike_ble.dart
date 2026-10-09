@@ -172,6 +172,11 @@ class MiniBikeBle extends ChangeNotifier {
   Future<void> cycleDisplaySkin() async => sendCommand(0x01);
   Future<void> resetTrip() async => sendCommand(0x02);
 
+  // ES200G prototype command extension (0x20-0x22)
+  Future<void> lockScooter() async => sendCommand(0x20);
+  Future<void> unlockScooter() async => sendCommand(0x21);
+  Future<void> toggleScooterLight() async => sendCommand(0x22);
+
   Future<void> disconnect({bool shouldNotify = true}) async {
     await _cleanupConnection();
     if (_device != null) {
