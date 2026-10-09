@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:minibike_stats/models/telemetry_packet.dart';
 
 /// BLE communication manager for MiniBike Stats
@@ -45,6 +46,17 @@ class MiniBikeBle extends ChangeNotifier {
       // Make sure Bluetooth is on
       if (await FlutterBluePlus.isSupported == false) {
         throw Exception("Bluetooth not supported on this device");
+      }
+
+      // Android 12+: runtime BLE scan/connect permissions.
+      if (Platform.isAndroid) {
+        final permissions = await [
+          Permission.bluetoothScan,
+          Permission.bluetoothConnect,
+        ].request();
+        if (permissions.values.any((status) => !status.isGranted)) {
+          throw Exception("Bluetooth permission denied. Allow Nearby devices in Android settings.");
+        }
       }
 
       // Start scan
