@@ -37,56 +37,56 @@ class MiniBikeBle extends ChangeNotifier {
     if (isConnected) return;
 
     try {
-      statusMessage = "Scanning for $deviceName...";
+      statusMessage = "Checking Bluetooth permissions...";
       notifyListeners();
 
-      isScanning = true;
-      notifyListeners();
-
-      // Make sure Bluetooth is on
       if (await FlutterBluePlus.isSupported == false) {
-        throw Exception("Bluetooth not supported on this device");
+        throw Exception("Bluetooth is not supported");
       }
 
-      // Android 12+: runtime BLE scan/connect permissions.
       if (Platform.isAndroid) {
         final permissions = await [
           Permission.bluetoothScan,
           Permission.bluetoothConnect,
         ].request();
+        debugPrint("BLE permissions: $permissions");
         if (permissions.values.any((status) => !status.isGranted)) {
-          throw Exception("Bluetooth permission denied. Allow Nearby devices in Android settings.");
+          throw Exception("Nearby devices permission denied: $permissions");
         }
       }
 
-      // Start scan
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 8),
-        withNames: [deviceName],
-      );
+      statusMessage = "Scanning for $deviceName...";
+      isScanning = true;
+      notifyListeners();
 
-      // Listen for scan results
       final completer = Completer<BluetoothDevice?>();
-
+      // Subscribe BEFORE starting the scan. Do not filter by advertising name
+      // at the OS level: some ESP32 stacks put the name in scan response data.
       final sub = FlutterBluePlus.scanResults.listen((results) {
-        for (ScanResult r in results) {
-          if (r.device.platformName == deviceName) {
-            FlutterBluePlus.stopScan();
+        if (completer.isCompleted) return;
+        for (final r in results) {
+          final name = r.advertisementData.advName.isNotEmpty
+              ? r.advertisementData.advName
+              : r.device.platformName;
+          debugPrint("BLE candidate: $name / ${r.device.remoteId}");
+          if (name == deviceName || r.device.platformName == deviceName) {
             completer.complete(r.device);
             return;
           }
         }
       });
 
-      final foundDevice = await completer.future.timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => null,
-      );
-
-      await sub.cancel();
-
+      BluetoothDevice? foundDevice;
+      try {
+        await FlutterBluePlus.startScan(timeout: const Duration(seconds: 8));
+        foundDevice = await completer.future.timeout(
+          const Duration(seconds: 10), onTimeout: () => null);
+      } finally {
+        await FlutterBluePlus.stopScan();
+        await sub.cancel();
+      }
       if (foundDevice == null) {
-        throw Exception("Could not find $deviceName. Make sure the ESP32 is powered on and advertising.");
+        throw Exception("MiniBikeStats not found. Check ESP32 advertising.");
       }
 
       _device = foundDevice;
@@ -156,7 +156,8 @@ class MiniBikeBle extends ChangeNotifier {
     } catch (e) {
       statusMessage = "Error: $e";
       debugPrint("BLE connect error: $e");
-      await disconnect();
+      await disconnect(shouldNotify: false);
+      statusMessage = "Error: $e";
       notifyListeners();
       rethrow;
     } finally {
