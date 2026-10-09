@@ -12,6 +12,7 @@ dependencies:
 
   # BLE communication - best maintained option for real-time
   flutter_blue_plus: 1.33.0
+  permission_handler: ^11.3.1
 
   # Optional but nice for future graphs
   fl_chart: ^0.68.0
