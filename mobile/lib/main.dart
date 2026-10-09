@@ -33,17 +33,44 @@ class MiniBikeStatsApp extends StatelessWidget {
   }
 }
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  bool demoMode = false;
+
+  static final TelemetryPacket demoTelemetry = TelemetryPacket(
+    version: 1,
+    timestampMs: 0,
+    vIn: 39.6,
+    iIn: 3.2,
+    iMotor: 5.4,
+    duty: 0.31,
+    rpm: 1250,
+    tempMos: 32.0,
+    tempMotor: 29.0,
+    fault: 0,
+    speedKmh: 18.4,
+    powerW: 126.7,
+    soc: 72.0,
+    tripKm: 3.42,
+    powerMode: 1,
+    lights: 1,
+    cruise: 0,
+  );
 
   @override
   Widget build(BuildContext context) {
     final ble = context.watch<MiniBikeBle>();
-    final telemetry = ble.latestTelemetry;
+    final telemetry = demoMode ? demoTelemetry : ble.latestTelemetry;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MiniBike Stats'),
+        title: const Text('ES200 • MiniBike Stats'),
         actions: [
           Icon(
             ble.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
@@ -104,7 +131,22 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Demo / Offline mode'),
+              subtitle: const Text('Sample data only — no scooter commands'),
+              secondary: const Icon(Icons.visibility),
+              value: demoMode,
+              onChanged: (value) => setState(() => demoMode = value),
+            ),
+            if (demoMode)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Text('DEMO — simulated values, not actual scooter telemetry'),
+                ),
+              ),
+            const SizedBox(height: 8),
 
             // Main telemetry display
             Expanded(
@@ -124,7 +166,7 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Quick action buttons
-            if (ble.isConnected)
+            if (ble.isConnected && !demoMode)
               Wrap(
                 spacing: 12,
                 runSpacing: 8,
@@ -144,7 +186,7 @@ class DashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 8),
             Text(
-              'Real-time over BLE • 5 Hz updates',
+              demoMode ? 'Offline preview • simulated telemetry' : 'Real-time over BLE • 5 Hz updates',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Colors.grey,
                   ),
