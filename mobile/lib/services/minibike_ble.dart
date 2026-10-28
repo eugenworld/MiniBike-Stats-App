@@ -27,7 +27,9 @@ class MiniBikeBle extends ChangeNotifier {
   final StreamController<List<int>> _logs = StreamController<List<int>>.broadcast();
   Stream<List<int>> get logRecords => _logs.stream;
   bool? lightOn;
-  bool? unlocked;
+  bool? unlocked; // requested LOCK/UNLOCK, for compatibility with test screen
+  bool? actualUnlocked;
+  bool? brakeActive;
   bool supportsLogger = false;
   BluetoothDevice? _device;
   BluetoothCharacteristic? _telemetryChar;
@@ -146,8 +148,19 @@ class MiniBikeBle extends ChangeNotifier {
       }
       if (_stateChar != null) {
         void updateState(List<int> v) {
-          if (v.length >= 3 && v[0] == 1) {
-            unlocked = v[1] != 0; lightOn = v[2] != 0; notifyListeners();
+          if (v.length >= 5 && v[0] == 2) {
+            unlocked = v[1] != 0;
+            actualUnlocked = v[2] == 2 ? null : v[2] == 1;
+            lightOn = v[3] == 2 ? null : v[3] == 1;
+            brakeActive = v[4] == 2 ? null : v[4] == 1;
+            notifyListeners();
+          } else if (v.length >= 3 && v[0] == 1) {
+            // Older ESP firmware: light is only a requested state, not verified.
+            unlocked = v[1] != 0;
+            actualUnlocked = null;
+            lightOn = null;
+            brakeActive = null;
+            notifyListeners();
           }
         }
         _stateSubscription = _stateChar!.onValueReceived.listen(updateState);
@@ -246,7 +259,7 @@ class MiniBikeBle extends ChangeNotifier {
     await _logSubscription?.cancel(); _logSubscription = null;
     await _stateSubscription?.cancel(); _stateSubscription = null;
     _logChar = null; _stateChar = null; supportsLogger = false;
-    lightOn = null; unlocked = null;
+    lightOn = null; unlocked = null; actualUnlocked = null; brakeActive = null;
     _telemetryChar = null;
     _commandChar = null;
 
