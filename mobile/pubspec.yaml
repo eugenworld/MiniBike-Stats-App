@@ -10,6 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Tests
+  path_provider: ^2.1.4
+  share_plus: ^10.0.2
+
   # BLE communication - best maintained option for real-time
   flutter_blue_plus: 1.33.0
   permission_handler: ^11.3.1
