@@ -18,6 +18,17 @@ class MiniBikeBle extends ChangeNotifier {
   static final Guid telemetryCharUuid = Guid("a1b2c3d4-1001-0000-0000-00000000beef");
   static final Guid commandCharUuid = Guid("a1b2c3d4-1002-0000-0000-00000000beef");
 
+  static final Guid logCharUuid = Guid("a1b2c3d4-1003-0000-0000-00000000beef");
+  static final Guid stateCharUuid = Guid("a1b2c3d4-1004-0000-0000-00000000beef");
+  BluetoothCharacteristic? _logChar;
+  BluetoothCharacteristic? _stateChar;
+  StreamSubscription<List<int>>? _logSubscription;
+  StreamSubscription<List<int>>? _stateSubscription;
+  final StreamController<List<int>> _logs = StreamController<List<int>>.broadcast();
+  Stream<List<int>> get logRecords => _logs.stream;
+  bool? lightOn;
+  bool? unlocked;
+  bool supportsLogger = false;
   BluetoothDevice? _device;
   BluetoothCharacteristic? _telemetryChar;
   BluetoothCharacteristic? _commandChar;
@@ -126,6 +137,23 @@ class MiniBikeBle extends ChangeNotifier {
         (c) => c.uuid == commandCharUuid,
       );
 
+      _logChar = service.characteristics.where((c) => c.uuid == logCharUuid).firstOrNull;
+      _stateChar = service.characteristics.where((c) => c.uuid == stateCharUuid).firstOrNull;
+      supportsLogger = _logChar != null && _stateChar != null;
+      if (_logChar != null) {
+        _logSubscription = _logChar!.onValueReceived.listen((v) { if (!_logs.isClosed) _logs.add(v); });
+        await _logChar!.setNotifyValue(true);
+      }
+      if (_stateChar != null) {
+        void updateState(List<int> v) {
+          if (v.length >= 3 && v[0] == 1) {
+            unlocked = v[1] != 0; lightOn = v[2] != 0; notifyListeners();
+          }
+        }
+        _stateSubscription = _stateChar!.onValueReceived.listen(updateState);
+        await _stateChar!.setNotifyValue(true);
+        updateState(await _stateChar!.read());
+      }
       // Subscribe to telemetry notifications (real-time updates)
       if (_telemetryChar!.properties.notify) {
         await _telemetryChar!.setNotifyValue(true);
@@ -190,6 +218,9 @@ class MiniBikeBle extends ChangeNotifier {
   Future<void> unlockScooter() async => sendCommand(0x21);
   Future<void> toggleScooterLight() async => sendCommand(0x22);
 
+  Future<void> startLogging() async => sendCommand(0x30);
+  Future<void> stopLogging() async => sendCommand(0x31);
+
   Future<void> disconnect({bool shouldNotify = true}) async {
     await _cleanupConnection();
     if (_device != null) {
@@ -212,6 +243,10 @@ class MiniBikeBle extends ChangeNotifier {
     await _connectionSubscription?.cancel();
     _connectionSubscription = null;
 
+    await _logSubscription?.cancel(); _logSubscription = null;
+    await _stateSubscription?.cancel(); _stateSubscription = null;
+    _logChar = null; _stateChar = null; supportsLogger = false;
+    lightOn = null; unlocked = null;
     _telemetryChar = null;
     _commandChar = null;
 
@@ -221,6 +256,7 @@ class MiniBikeBle extends ChangeNotifier {
   @override
   void dispose() {
     disconnect(shouldNotify: false);
+    _logs.close();
     super.dispose();
   }
 }
