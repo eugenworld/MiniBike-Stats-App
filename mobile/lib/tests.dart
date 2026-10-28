@@ -42,7 +42,13 @@ class _LightingTestScreenState extends State<LightingTestScreen> {
       final type=data[0]; final ms=data[1]|(data[2]<<8)|(data[3]<<16)|(data[4]<<24);
       final hex=data.skip(5).map((b)=>b.toRadixString(16).padLeft(2,'0').toUpperCase()).join(' ');
       out.writeln('${DateTime.now().toUtc().toIso8601String()},$ms,${type==1?'RX':type==2?'TX':'UNKNOWN'},"$hex"');
-      if(type==1)rx++;else if(type==2)tx++;else bad++;
+      if (type == 1) {
+        rx++;
+      } else if (type == 2) {
+        tx++;
+      } else {
+        bad++;
+      }
       if(mounted && (rx+tx)%10==0)setState((){});
     });
     try { await ble.startLogging(); } catch(e) { await subscription?.cancel();await out.close();rethrow; }
