@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -11,7 +12,7 @@ import 'package:minibike_stats/models/telemetry_packet.dart';
 /// Connects to ESP32 advertising as "MiniBikeStats"
 /// Subscribes to real-time telemetry notifications
 class MiniBikeBle extends ChangeNotifier {
-  static const String deviceName = "MiniBikeStats";
+  static const String deviceName = "MiniBikeES200";
 
   // Same UUIDs as firmware
   static final Guid serviceUuid = Guid("a1b2c3d4-0000-0000-0000-00000000beef");
@@ -26,6 +27,13 @@ class MiniBikeBle extends ChangeNotifier {
   StreamSubscription<List<int>>? _stateSubscription;
   final StreamController<List<int>> _logs = StreamController<List<int>>.broadcast();
   Stream<List<int>> get logRecords => _logs.stream;
+  int? phase;
+  int? speedLimit;
+  int commandResult = 0;
+  int resetReason = 0;
+  bool charging = false;
+  int? chargingMinutes;
+  double? odometerKm;
   bool? lightOn;
   bool? unlocked; // requested LOCK/UNLOCK, for compatibility with test screen
   bool? actualUnlocked;
@@ -148,7 +156,19 @@ class MiniBikeBle extends ChangeNotifier {
       }
       if (_stateChar != null) {
         void updateState(List<int> v) {
-          if (v.length >= 5 && v[0] == 2) {
+          if (v.length == 13 && v[0] == 4) {
+            phase = v[1];
+            actualUnlocked = v[2] == 2 ? null : v[2] == 1;
+            lightOn = v[3] == 2 ? null : v[3] == 1;
+            charging = v[4] == 1;
+            speedLimit = v[5];
+            commandResult = v[6];
+            resetReason = v[7];
+            final estimate = v[8] | (v[9] << 8);
+            chargingMinutes = estimate == 0xffff ? null : estimate;
+            odometerKm = v[10] == 1 ? (v[11] | (v[12] << 8)) * 0.0804672 : null;
+            notifyListeners();
+          } else if (v.length >= 5 && v[0] == 2) {
             unlocked = v[1] != 0;
             actualUnlocked = v[2] == 2 ? null : v[2] == 1;
             lightOn = v[3] == 2 ? null : v[3] == 1;
@@ -189,6 +209,11 @@ class MiniBikeBle extends ChangeNotifier {
       if (Platform.isAndroid) {
         await _device!.requestMtu(185);
       }
+
+      final clock = ByteData(5)
+        ..setUint8(0, 0x23)
+        ..setUint32(1, DateTime.now().millisecondsSinceEpoch ~/ 1000, Endian.little);
+      await _commandChar!.write(clock.buffer.asUint8List());
 
       isConnected = true;
       statusMessage = "Connected - receiving real-time stats";
@@ -264,6 +289,13 @@ class MiniBikeBle extends ChangeNotifier {
     _commandChar = null;
 
     latestTelemetry = null;
+    phase = null;
+    speedLimit = null;
+    charging = false;
+    chargingMinutes = null;
+    odometerKm = null;
+    commandResult = 0;
+    resetReason = 0;
   }
 
   @override
