@@ -227,7 +227,8 @@ class DashboardScreen extends StatelessWidget {
     final soc = ble.latestTelemetry?.soc;
     final fresh = speed != null && speed.isFinite;
     final ready = ble.isConnected && !ble.isScanning && phase != null && fresh;
-    final canLock = ble.isConnected && !ble.isScanning &&
+    final canWake = ble.isConnected && !fresh && ble.canWakeController;
+    final canLock = canWake || ble.isConnected && !ble.isScanning &&
         speed != null && speed.isFinite &&
         (phase == 0 && speed == 0 || phase == 4 && speed <= 2);
     final canUnlock = ready && phase == 2 && ble.actualUnlocked == false &&
@@ -342,7 +343,9 @@ class DashboardScreen extends StatelessWidget {
           Text('Управление', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
           if (ble.isConnected && !fresh)
-            const Text('Управление доступно после получения телеметрии самоката.')
+            Text(canWake
+                ? 'Включите контроллер, чтобы получить телеметрию.'
+                : 'Ожидание телеметрии самоката.')
           else if (status != null)
             Text(status),
           if (phase == 0 && const [4, 5, 6, 7].contains(ble.resetReason))
@@ -356,7 +359,7 @@ class DashboardScreen extends StatelessWidget {
               FilledButton.icon(
                 onPressed: canLock ? () => perform(ble.lockScooter) : null,
                 icon: const Icon(Icons.lock_outline),
-                label: const Text('LOCK'),
+                label: Text(canWake ? 'Включить контроллер' : 'LOCK'),
               ),
               FilledButton.icon(
                 onPressed: canUnlock ? () => perform(ble.unlockScooter) : null,
