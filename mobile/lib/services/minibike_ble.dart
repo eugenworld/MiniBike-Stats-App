@@ -27,6 +27,7 @@ class MiniBikeBle extends ChangeNotifier {
   final StreamController<List<int>> _logs = StreamController<List<int>>.broadcast();
   Stream<List<int>> get logRecords => _logs.stream;
   int? phase;
+  int? unlockPermission;
   int? speedLimit;
   int commandResult = 0;
   int resetReason = 0;
@@ -157,6 +158,7 @@ class MiniBikeBle extends ChangeNotifier {
         void updateState(List<int> v) {
           if (v.length >= 13 && v[0] == 4) {
             phase = v[1];
+            unlockPermission = v.length >= 14 ? v[13] : null;
             actualUnlocked = v[2] == 2 ? null : v[2] == 1;
             lightOn = v[3] == 2 ? null : v[3] == 1;
             charging = v[4] == 1;
@@ -289,6 +291,7 @@ class MiniBikeBle extends ChangeNotifier {
 
     latestTelemetry = null;
     phase = null;
+    unlockPermission = null;
     speedLimit = null;
     charging = false;
     chargingMinutes = null;
