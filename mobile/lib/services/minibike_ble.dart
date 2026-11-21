@@ -20,6 +20,12 @@ class MiniBikeBle extends ChangeNotifier {
 
   static final Guid logCharUuid = Guid("a1b2c3d4-1003-0000-0000-00000000beef");
   static final Guid stateCharUuid = Guid("a1b2c3d4-1004-0000-0000-00000000beef");
+  static final Guid adminCharUuid = Guid("a1b2c3d4-1005-0000-0000-00000000beef");
+  BluetoothCharacteristic? _adminChar;
+  Completer<int>? _adminPending;
+  int _adminRequest = 0;
+  bool canSetSpeedLimit = false;
+  bool get supportsAdmin => _adminChar != null;
   BluetoothCharacteristic? _logChar;
   BluetoothCharacteristic? _stateChar;
   StreamSubscription<List<int>>? _logSubscription;
@@ -147,6 +153,7 @@ class MiniBikeBle extends ChangeNotifier {
         (c) => c.uuid == commandCharUuid,
       );
 
+      _adminChar = service.characteristics.where((c) => c.uuid == adminCharUuid).firstOrNull;
       _logChar = service.characteristics.where((c) => c.uuid == logCharUuid).firstOrNull;
       _stateChar = service.characteristics.where((c) => c.uuid == stateCharUuid).firstOrNull;
       supportsLogger = _logChar != null && _stateChar != null;
@@ -157,6 +164,14 @@ class MiniBikeBle extends ChangeNotifier {
       if (_stateChar != null) {
         void updateState(List<int> v) {
           if (v.length >= 13 && v[0] == 4) {
+            if (v.length >= 18) {
+              canSetSpeedLimit = v[17] == 1;
+              final replyId = v[14] | (v[15] << 8);
+              final pending = _adminPending;
+              if (replyId == _adminRequest && pending != null && !pending.isCompleted) {
+                pending.complete(v[16]);
+              }
+            }
             phase = v[1];
             unlockPermission = v.length >= 14 ? v[13] : null;
             actualUnlocked = v[2] == 2 ? null : v[2] == 1;
@@ -233,6 +248,26 @@ class MiniBikeBle extends ChangeNotifier {
     }
   }
 
+  Future<int> adminCommand(int operation, String pin, [List<int> argument = const []]) async {
+    final characteristic = _adminChar;
+    if (!isConnected || characteristic == null) {
+      throw StateError('Подключите ESP32 с прошивкой 1.0.');
+    }
+    if (_adminPending != null) throw StateError('Дождитесь ответа ESP32.');
+    final pending = Completer<int>();
+    _adminRequest = _adminRequest % 65535 + 1;
+    _adminPending = pending;
+    try {
+      await characteristic.write([
+        operation, _adminRequest & 255, _adminRequest >> 8,
+        ...pin.codeUnits, ...argument,
+      ]);
+      return await pending.future.timeout(const Duration(seconds: 5));
+    } finally {
+      if (identical(_adminPending, pending)) _adminPending = null;
+    }
+  }
+
   /// Send a simple command byte to the ESP32
   Future<void> sendCommand(int commandByte) async {
     if (!isConnected || _commandChar == null) {
@@ -288,6 +323,11 @@ class MiniBikeBle extends ChangeNotifier {
     lightOn = null; unlocked = null; actualUnlocked = null; brakeActive = null;
     _telemetryChar = null;
     _commandChar = null;
+    _adminChar = null;
+    canSetSpeedLimit = false;
+    final pending = _adminPending;
+    if (pending != null && !pending.isCompleted) pending.complete(7);
+    _adminPending = null;
 
     latestTelemetry = null;
     phase = null;
