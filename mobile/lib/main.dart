@@ -227,19 +227,17 @@ class DashboardScreen extends StatelessWidget {
     final soc = ble.latestTelemetry?.soc;
     final fresh = speed != null && speed.isFinite;
     final ready = ble.isConnected && !ble.isScanning && phase != null && fresh;
-    final canWake = ble.isConnected && !fresh && ble.canWakeController;
-    final canLock = canWake || ble.isConnected && !ble.isScanning &&
-        speed != null && speed.isFinite &&
-        (phase == 0 && speed == 0 || phase == 4 && speed <= 2);
-    final canUnlock = ready && phase == 2 && ble.actualUnlocked == false &&
-        !ble.charging && speed == 0;
+    final showLock = ble.actualUnlocked == true || phase == 1;
+    final canLock = ready && phase == 4 && showLock && speed != null && speed <= 2;
+    final canUnlock = ready && (phase == 0 || phase == 2) &&
+        ble.actualUnlocked == false && !ble.charging && speed == 0;
     final canUseLight = ready && phase == 4 && ble.actualUnlocked == true &&
         ble.lightOn != null;
 
     final status = switch (phase) {
-      0 when fresh && speed == 0 => 'Нажмите LOCK для подтверждения блокировки.',
+      0 when ble.actualUnlocked == false => 'Самокат заблокирован',
       0 => 'Дождитесь остановки самоката.',
-      1 || 5 => 'Блокировка…',
+      1 => 'Блокировка…',
       2 when ble.actualUnlocked == false => 'Самокат заблокирован',
       3 => 'Разблокировка…',
       4 when ble.actualUnlocked == true => 'Самокат разблокирован',
@@ -343,13 +341,9 @@ class DashboardScreen extends StatelessWidget {
           Text('Управление', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
           if (ble.isConnected && !fresh)
-            Text(canWake
-                ? 'Включите контроллер, чтобы получить телеметрию.'
-                : 'Ожидание телеметрии самоката.')
+            const Text('Ожидание телеметрии самоката.')
           else if (status != null)
             Text(status),
-          if (phase == 0 && const [4, 5, 6, 7].contains(ble.resetReason))
-            const Text('ESP32 перезапустилась. После остановки выполните LOCK, затем UNLOCK.'),
           if (message != null) Text(message),
           const SizedBox(height: 8),
           Wrap(
@@ -357,14 +351,13 @@ class DashboardScreen extends StatelessWidget {
             runSpacing: 8,
             children: [
               FilledButton.icon(
-                onPressed: canLock ? () => perform(ble.lockScooter) : null,
-                icon: const Icon(Icons.lock_outline),
-                label: Text(canWake ? 'Включить контроллер' : 'LOCK'),
-              ),
-              FilledButton.icon(
-                onPressed: canUnlock ? () => perform(ble.unlockScooter) : null,
-                icon: const Icon(Icons.lock_open),
-                label: const Text('UNLOCK'),
+                onPressed: canLock
+                    ? () => perform(ble.lockScooter)
+                    : canUnlock
+                        ? () => perform(ble.unlockScooter)
+                        : null,
+                icon: Icon(showLock ? Icons.lock_outline : Icons.lock_open),
+                label: Text(showLock ? 'LOCK' : 'UNLOCK'),
               ),
               OutlinedButton.icon(
                 onPressed: canUseLight ? () => perform(ble.toggleScooterLight) : null,
