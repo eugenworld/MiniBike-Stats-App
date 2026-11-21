@@ -27,6 +27,6 @@ void main() {
 
     await tester.tap(find.text('Админ'));
     await tester.pumpAndSettle();
-    expect(find.text('Пароль'), findsOneWidget);
+    expect(find.text('Подключитесь к самокату.'), findsOneWidget);
   });
 }
