@@ -228,7 +228,7 @@ class DashboardScreen extends StatelessWidget {
     final fresh = speed != null && speed.isFinite;
     final ready = ble.isConnected && !ble.isScanning && phase != null && fresh;
     final showLock = ble.actualUnlocked == true || phase == 1;
-    final canLock = ready && phase == 4 && showLock && speed != null && speed <= 2;
+    final canLock = ready && phase == 4 && showLock && speed <= 2;
     final canUnlock = ready && (phase == 0 || phase == 2) &&
         ble.actualUnlocked == false && !ble.charging && speed == 0;
     final canUseLight = ready && phase == 4 && ble.actualUnlocked == true &&
