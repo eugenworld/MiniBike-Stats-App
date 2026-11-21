@@ -68,7 +68,7 @@ class _MiniBikeStatsAppState extends State<MiniBikeStatsApp> {
         debugShowCheckedModeBanner: false,
         home: Builder(builder: (context) {
           final ble = context.watch<MiniBikeBle>();
-          const titles = ['Мой самокат', 'Поездки', 'Настройки', 'Администратор'];
+          const titles = ['Мой самокат', 'Настройки', 'Администратор'];
           return Scaffold(
             appBar: AppBar(title: Text(titles[_page])),
             body: SafeArea(
@@ -77,21 +77,8 @@ class _MiniBikeStatsAppState extends State<MiniBikeStatsApp> {
                     distance: _distance,
                     showMetrics: _showMetrics,
                   ),
-                1 => const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.route_outlined, size: 40),
-                          SizedBox(height: 12),
-                          Text('История поездок недоступна в этой сборке.'),
-                        ],
-                      ),
-                    ),
-                  ),
-                2 => _settings(),
-                _ => _administrator(ble),
+                1 => _settings(),
+                _ => _Administrator(ble: ble),
               },
             ),
             bottomNavigationBar: NavigationBar(
@@ -100,9 +87,6 @@ class _MiniBikeStatsAppState extends State<MiniBikeStatsApp> {
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.electric_scooter), label: 'Самокат',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.route_outlined), label: 'Поездки',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.settings_outlined), label: 'Настройки',
@@ -160,50 +144,179 @@ class _MiniBikeStatsAppState extends State<MiniBikeStatsApp> {
             },
           ),
           const ListTile(
-            title: Text('Громкость динамика'),
-            subtitle: Slider(value: 0, onChanged: null),
-          ),
-          const ListTile(
-            title: Text('Очистить историю поездок'),
-            trailing: Icon(Icons.delete_outline),
-            enabled: false,
-          ),
-          const ListTile(
             title: Text('Версия'),
-            subtitle: Text('ES200 · сборка для проверки интерфейса'),
+            subtitle: Text('ES200 · 1.0'),
           ),
         ],
       );
 
-  Widget _administrator(MiniBikeBle ble) {
+}
+  
+class _Administrator extends StatefulWidget {
+  const _Administrator({required this.ble});
+  final MiniBikeBle ble;
+
+  @override
+  State<_Administrator> createState() => _AdministratorState();
+}
+
+class _AdministratorState extends State<_Administrator> {
+  final _pin = TextEditingController();
+  final _newPin = TextEditingController();
+  final _limit = TextEditingController();
+  bool _busy = false;
+  bool _unlimited = false;
+  String? _authorizedPin;
+  String? _message;
+
+  bool _validPin(String pin) => RegExp(r'^[0-9]{6}$').hasMatch(pin);
+
+  @override
+  void didUpdateWidget(covariant _Administrator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.ble.isConnected) {
+      _authorizedPin = null;
+      _pin.clear();
+      _newPin.clear();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pin.dispose();
+    _newPin.dispose();
+    _limit.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send(int operation) async {
+    final pin = operation == 0x40 ? _pin.text : _authorizedPin;
+    if (pin == null || !_validPin(pin)) {
+      setState(() => _message = 'Введите пароль из шести цифр.');
+      return;
+    }
+    final next = _newPin.text;
+    final limit = _unlimited ? 255 : int.tryParse(_limit.text);
+    final argument = <int>[];
+    if (operation == 0x41) {
+      if (limit == null || (!_unlimited && (limit < 1 || limit > 40))) {
+        setState(() => _message = 'Введите целое число от 1 до 40 км/ч.');
+        return;
+      }
+      argument.add(limit);
+    }
+    if (operation == 0x42) {
+      if (!_validPin(next)) {
+        setState(() => _message = 'Новый пароль должен состоять из шести цифр.');
+        return;
+      }
+      argument.addAll(next.codeUnits);
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final reply = await widget.ble.adminCommand(operation, pin, argument);
+      if (!mounted) return;
+      if (reply == 0 && operation == 0x40 && widget.ble.isConnected) {
+        _authorizedPin = pin;
+        _pin.clear();
+        final applied = widget.ble.speedLimit;
+        _unlimited = applied == 255;
+        _limit.text = applied == null || applied == 255 ? '' : '$applied';
+      }
+      if (reply == 0 && operation == 0x42 && widget.ble.isConnected) {
+        _authorizedPin = next;
+        _newPin.clear();
+      }
+      if (reply == 1 || reply == 2 || reply == 7) _authorizedPin = null;
+      _message = switch (reply) {
+        0 when operation == 0x41 => 'Лимит сохранён в ESP32.',
+        0 when operation == 0x42 => 'Пароль изменён.',
+        0 => null,
+        1 => 'Неверный пароль.',
+        2 => 'Слишком много попыток. Подождите 30 секунд.',
+        3 => 'Остановите и заблокируйте самокат.',
+        4 => 'Ошибка памяти ESP32.',
+        5 => 'ESP32 отклонила значение.',
+        _ => 'Связь с ESP32 прервана.',
+      };
+    } catch (_) {
+      if (mounted) _message = 'Нет ответа. Проверьте подключение и сопряжение Bluetooth.';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ble = widget.ble;
+    if (!ble.isConnected || !ble.supportsAdmin) {
+      return Center(child: Text(ble.isConnected
+          ? 'Обновите прошивку ESP32 до версии 1.0.'
+          : 'Подключитесь к самокату.'));
+    }
     final limit = ble.speedLimit;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('Вход администратора'),
-        const SizedBox(height: 12),
-        const TextField(
-          enabled: false,
-          obscureText: true,
-          decoration: InputDecoration(
-            labelText: 'Пароль',
-            border: OutlineInputBorder(),
+        if (_authorizedPin == null) ...[
+          TextField(
+            controller: _pin,
+            enabled: !_busy,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: const InputDecoration(labelText: 'Пароль администратора'),
           ),
-        ),
-        const SizedBox(height: 12),
-        const FilledButton(onPressed: null, child: Text('Войти')),
-        const SizedBox(height: 12),
-        const Text('Вход и изменение параметров ESP32 пока недоступны.'),
-        const Divider(height: 32),
-        ListTile(
-          title: const Text('Ограничение скорости'),
-          subtitle: Text(limit == null
-              ? '—'
-              : limit == 255 ? 'Без ограничения' : '$limit км/ч'),
-          leading: const Icon(Icons.speed),
-        ),
-        const ListTile(title: Text('Сменить пароль'), enabled: false),
-        const ListTile(title: Text('Google Drive'), enabled: false),
+          FilledButton(onPressed: _busy ? null : () => _send(0x40), child: const Text('Войти')),
+        ] else ...[
+          ListTile(
+            title: const Text('Текущий лимит'),
+            subtitle: Text(limit == 255 ? 'Без ограничения' : limit == null ? '—' : '$limit км/ч'),
+          ),
+          SwitchListTile(
+            title: const Text('Без ограничения'),
+            value: _unlimited,
+            onChanged: _busy ? null : (value) => setState(() => _unlimited = value),
+          ),
+          if (!_unlimited)
+            TextField(
+              controller: _limit,
+              enabled: !_busy,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Лимит, км/ч (1–40)'),
+            ),
+          if (!ble.canSetSpeedLimit)
+            const Text('Для изменения лимита остановите и заблокируйте самокат.'),
+          FilledButton(
+            onPressed: _busy || !ble.canSetSpeedLimit ? null : () => _send(0x41),
+            child: const Text('Сохранить лимит'),
+          ),
+          const Divider(),
+          TextField(
+            controller: _newPin,
+            enabled: !_busy,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: const InputDecoration(labelText: 'Новый пароль'),
+          ),
+          OutlinedButton(
+            onPressed: _busy ? null : () => _send(0x42),
+            child: const Text('Сменить пароль'),
+          ),
+          TextButton(
+            onPressed: _busy ? null : () => setState(() {
+              _authorizedPin = null;
+              _newPin.clear();
+              _message = null;
+            }),
+            child: const Text('Выйти'),
+          ),
+        ],
+        if (_message != null) Text(_message!),
       ],
     );
   }
@@ -333,10 +446,6 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 _metric('Пробег, всего', distance(ble.odometerKm),
                     note: ble.odometerKm == null ? null : 'Предварительная оценка'),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                _metric('Текущая / последняя поездка', distance(ble.latestTelemetry?.tripKm)),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                _metric('Пробег с заряда', '—'),
               ],
             ),
           ),
