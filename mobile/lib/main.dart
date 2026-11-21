@@ -229,14 +229,18 @@ class DashboardScreen extends StatelessWidget {
     final ready = ble.isConnected && !ble.isScanning && phase != null && fresh;
     final showLock = ble.actualUnlocked == true || phase == 1;
     final canLock = ready && phase == 4 && showLock && speed <= 2;
-    final canUnlock = ready && (phase == 0 || phase == 2) &&
-        ble.actualUnlocked == false && !ble.charging && speed == 0;
+    final canUnlock = ble.isConnected && !ble.isScanning &&
+        ble.unlockPermission == 0 && !ble.charging && !showLock;
     final canUseLight = ready && phase == 4 && ble.actualUnlocked == true &&
         ble.lightOn != null;
 
     final status = switch (phase) {
       0 when ble.actualUnlocked == false => 'Самокат заблокирован',
-      0 => 'Дождитесь остановки самоката.',
+      0 when canUnlock => 'Можно разблокировать',
+      0 when ble.unlockPermission == 2 => 'Дождитесь остановки самоката.',
+      0 when ble.unlockPermission == 4 => 'Контроллер не подтвердил блокировку.',
+      0 when ble.unlockPermission == 5 => 'Синхронизация с телефоном…',
+      0 when fresh => 'Ожидание готовности контроллера.',
       1 => 'Блокировка…',
       2 when ble.actualUnlocked == false => 'Самокат заблокирован',
       3 => 'Разблокировка…',
@@ -249,6 +253,7 @@ class DashboardScreen extends StatelessWidget {
       3 => 'Разблокировка недоступна во время зарядки.',
       4 => 'Действие недоступно в текущем состоянии.',
       5 => 'Переподключите приложение для синхронизации времени.',
+      6 => 'Контроллер не подтвердил разблокировку за 4 секунды.',
       _ => null,
     };
 
@@ -340,10 +345,12 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 20),
           Text('Управление', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
-          if (ble.isConnected && !fresh)
+          if (ble.isConnected && !fresh && !canUnlock)
             const Text('Ожидание телеметрии самоката.')
           else if (status != null)
             Text(status),
+          if (ble.isConnected && phase != null && ble.unlockPermission == null)
+            const Text('Для управления обновите прошивку ESP32.'),
           if (message != null) Text(message),
           const SizedBox(height: 8),
           Wrap(
