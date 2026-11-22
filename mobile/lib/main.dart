@@ -347,12 +347,20 @@ class DashboardScreen extends StatelessWidget {
     final canUseLight = ready && phase == 4 && ble.actualUnlocked == true &&
         ble.lightOn != null;
 
-    final status = switch (phase) {
+    final unlockBlock = !ble.isConnected || canUnlock || showLock ||
+            (phase != 0 && phase != 2)
+        ? null
+        : switch (ble.unlockPermission) {
+            1 => 'Нет свежей телеметрии контроллера.',
+            2 => 'Контроллер сообщает ненулевую скорость.',
+            4 => 'Разблокировка недоступна в текущем режиме.',
+            5 => 'Синхронизация с телефоном…',
+            7 => 'Ожидание второго кадра с нулевой скоростью.',
+            _ => null,
+          };
+    final status = unlockBlock ?? switch (phase) {
       0 when ble.actualUnlocked == false => 'Самокат заблокирован',
       0 when canUnlock => 'Можно разблокировать',
-      0 when ble.unlockPermission == 2 => 'Дождитесь остановки самоката.',
-      0 when ble.unlockPermission == 4 => 'Контроллер не подтвердил блокировку.',
-      0 when ble.unlockPermission == 5 => 'Синхронизация с телефоном…',
       0 when fresh => 'Ожидание готовности контроллера.',
       1 => 'Блокировка…',
       2 when ble.actualUnlocked == false => 'Самокат заблокирован',
@@ -367,6 +375,8 @@ class DashboardScreen extends StatelessWidget {
       4 => 'Действие недоступно в текущем состоянии.',
       5 => 'Переподключите приложение для синхронизации времени.',
       6 => 'Контроллер не подтвердил разблокировку за 4 секунды.',
+      7 => 'Ожидание второго кадра с нулевой скоростью.',
+      8 => 'Самокат уже разблокирован.',
       _ => null,
     };
 
@@ -454,7 +464,7 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 20),
           Text('Управление', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
-          if (ble.isConnected && !fresh && !canUnlock)
+          if (unlockBlock == null && ble.isConnected && !fresh && !canUnlock)
             const Text('Ожидание телеметрии самоката.')
           else if (status != null)
             Text(status),
