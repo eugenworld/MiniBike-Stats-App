@@ -340,10 +340,10 @@ class DashboardScreen extends StatelessWidget {
     final soc = ble.latestTelemetry?.soc;
     final fresh = speed != null && speed.isFinite;
     final ready = ble.isConnected && !ble.isScanning && phase != null && fresh;
-    final showLock = ble.actualUnlocked == true || phase == 1;
+    final showLock = phase == 4 && ble.actualUnlocked == true;
     final canLock = ready && phase == 4 && showLock && speed <= 2;
     final canUnlock = ble.isConnected && !ble.isScanning &&
-        ble.unlockPermission == 0 && !ble.charging && !showLock;
+        ble.unlockPermission == 0 && !showLock;
     final canUseLight = ready && phase == 4 && ble.actualUnlocked == true &&
         ble.lightOn != null;
 
@@ -460,7 +460,7 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
         ],
-        if (!ble.charging) ...[
+        ...[
           const SizedBox(height: 20),
           Text('Управление', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
